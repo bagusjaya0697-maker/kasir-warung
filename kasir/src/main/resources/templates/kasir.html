@@ -1,0 +1,540 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BagusMart - Kasir</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: Arial, sans-serif;
+            background: #f1f5f9; color: #1e293b;
+        }
+        header { background: #166534; color: white; padding: 18px 24px; }
+        header h1 { margin: 0 0 12px; font-size: 23px; }
+        nav { display: flex; gap: 10px; flex-wrap: wrap; }
+        nav a {
+            color: white; text-decoration: none;
+            padding: 9px 14px; border-radius: 7px;
+            background: #ffffff20;
+        }
+        nav a.active { background: white; color: #166534; }
+        .container { max-width: 1200px; margin: auto; padding: 20px; }
+        .layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+        .panel {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 2px 8px #0000000a; min-width: 0;
+        }
+        h2 { font-size: 19px; margin: 0 0 16px; }
+        input, button { font: inherit; }
+        input {
+            width: 100%; padding: 12px; border: 1px solid #cbd5e1;
+            border-radius: 8px; margin: 7px 0 12px;
+        }
+        label { display: block; font-weight: bold; }
+        .product {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 12px; padding: 14px 0; border-bottom: 1px solid #e2e8f0;
+        }
+        .product p { margin: 5px 0 0; color: #64748b; font-size: 14px; }
+        button {
+            border: 0; border-radius: 8px; padding: 10px 14px;
+            cursor: pointer;
+        }
+        button:disabled { opacity: .55; cursor: not-allowed; }
+        .add, .pay { background: #166534; color: white; }
+        .remove { background: #fee2e2; color: #991b1b; padding: 7px 10px; }
+        .cart-row { padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+        .cart-info { display: flex; justify-content: space-between; gap: 8px; }
+        .quantity { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .quantity button { background: #e2e8f0; min-width: 34px; }
+        .total { font-size: 23px; font-weight: bold; color: #166534; margin: 20px 0; }
+        .pay { width: 100%; padding: 14px; font-weight: bold; }
+        .empty { color: #64748b; text-align: center; padding: 24px 0; }
+        .message { margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+        .error { color: #b42318; }
+        .success { color: #166534; }
+        .hint { font-size: 13px; color: #64748b; }
+        .receipt-actions { margin-top: 12px; }
+        .receipt-button { background: #1d4ed8; color: white; width: 100%; padding: 12px; font-weight: bold; }
+        #receipt { display: none; }
+
+        @media print {
+            body * { visibility: hidden !important; }
+            #receipt, #receipt * { visibility: visible !important; }
+            #receipt {
+                display: block !important;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 72mm;
+                padding: 3mm;
+                margin: 0;
+                color: #000;
+                background: #fff;
+                font-family: "Courier New", monospace;
+                font-size: 11px;
+            }
+            #receipt h2 { text-align: center; margin: 0 0 4px; font-size: 18px; }
+            #receipt .receipt-center { text-align: center; }
+            #receipt .receipt-line { border-top: 1px dashed #000; margin: 6px 0; }
+            #receipt table { width: 100%; border-collapse: collapse; }
+            #receipt td { padding: 2px 0; vertical-align: top; }
+            #receipt .right { text-align: right; }
+            #receipt .receipt-total { font-weight: bold; }
+            @page { size: auto; margin: 5mm; }
+        }
+
+        @media (max-width: 750px) {
+            .layout { grid-template-columns: 1fr; }
+            .container { padding: 12px; }
+            header { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>BagusMart</h1>
+    <nav>
+        <a href="/" class="active">Kasir</a>
+        <a href="/produk">Kelola Produk</a>
+    </nav>
+</header>
+
+<main class="container">
+    <div class="layout">
+        <section class="panel">
+            <h2>Daftar Barang</h2>
+            <input id="search" type="search" placeholder="Cari nama barang...">
+            <div id="products"><p class="empty">Memuat produk...</p></div>
+            <div id="productMessage" class="message"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Keranjang Belanja</h2>
+            <div id="cart"><p class="empty">Keranjang masih kosong.</p></div>
+            <div class="total">Total: <span id="total">Rp0</span></div>
+
+            <label for="payment">Uang pembayaran (Rp)</label>
+            <input id="payment" type="text" inputmode="numeric"
+                   autocomplete="off" placeholder="Contoh: 50000">
+
+            <p>Kembalian: <strong id="change">Rp0</strong></p>
+            <p id="paymentHint" class="hint">Masukkan uang pelanggan.</p>
+            <button id="payButton" class="pay" type="button">Proses Pembayaran</button>
+            <div id="message" class="message" role="status"></div>
+            <div id="receiptActions" class="receipt-actions" hidden>
+                <button id="printReceiptButton" class="receipt-button" type="button">Cetak Struk</button>
+            </div>
+        </section>
+    </div>
+</main>
+
+<section id="receipt" aria-label="Struk BagusMart"></section>
+
+<script>
+"use strict";
+
+const PRODUCTS_API = "/api/products";
+const SALES_API = "/api/sales";
+
+let products = [];
+let cart = [];
+let busy = false;
+let lastReceipt = null;
+
+const $ = id => document.getElementById(id);
+
+function rupiah(value) {
+    return "Rp" + Math.round(Number(value) || 0).toLocaleString("id-ID");
+}
+
+// Menerima input seperti 50000, 50.000, atau Rp50.000.
+function parseRupiah(value) {
+    const digits = String(value ?? "").replace(/\D/g, "");
+    return digits ? Number(digits) : 0;
+}
+
+function showMessage(message, type = "") {
+    $("message").textContent = message;
+    $("message").className = "message " + type;
+}
+
+async function apiRequest(url, options = {}) {
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+        }
+    });
+
+    const raw = await response.text();
+    let data = null;
+
+    if (raw) {
+        try { data = JSON.parse(raw); }
+        catch { data = raw; }
+    }
+
+    if (!response.ok) {
+        const detail = data && typeof data === "object"
+            ? (data.message || data.error || data.detail)
+            : data;
+        throw new Error(detail || "Server merespons HTTP " + response.status);
+    }
+
+    return data;
+}
+
+async function loadProducts() {
+    $("products").innerHTML = '<p class="empty">Memuat produk...</p>';
+
+    try {
+        const data = await apiRequest(PRODUCTS_API);
+        if (!Array.isArray(data)) {
+            throw new Error("Data produk tidak berbentuk daftar.");
+        }
+
+        products = data.map(p => ({
+            id: p.id,
+            name: String(p.name ?? ""),
+            price: Number(p.price),
+            stock: Number(p.stock ?? 0)
+        })).filter(p =>
+            p.id != null && p.name && Number.isFinite(p.price)
+        );
+
+        // Perbarui data stok/harga pada keranjang tanpa mengubah jumlahnya.
+        cart = cart.map(item => {
+            const latest = products.find(p => p.id === item.id);
+            return latest ? { ...latest, qty: item.qty } : item;
+        }).filter(item => item.stock > 0);
+
+        renderProducts();
+        renderCart();
+        $("productMessage").textContent = "";
+    } catch (error) {
+        $("products").innerHTML =
+            '<p class="empty">Produk tidak bisa dimuat.</p>';
+        $("productMessage").textContent =
+            "Gagal mengambil produk: " + error.message;
+        $("productMessage").className = "message error";
+    }
+}
+
+function renderProducts() {
+    const keyword = $("search").value.trim().toLocaleLowerCase("id-ID");
+    const filtered = products.filter(p =>
+        p.name.toLocaleLowerCase("id-ID").includes(keyword)
+    );
+
+    if (!filtered.length) {
+        $("products").innerHTML =
+            '<p class="empty">Produk tidak ditemukan.</p>';
+        return;
+    }
+
+    $("products").replaceChildren();
+
+    filtered.forEach(product => {
+        const row = document.createElement("div");
+        row.className = "product";
+
+        const info = document.createElement("div");
+        const name = document.createElement("strong");
+        name.textContent = product.name;
+
+        const detail = document.createElement("p");
+        detail.textContent = rupiah(product.price) +
+            " • Stok: " + product.stock;
+
+        info.append(name, detail);
+
+        const button = document.createElement("button");
+        button.className = "add";
+        button.textContent = product.stock > 0 ? "Tambah" : "Stok habis";
+        button.disabled = busy || product.stock <= 0;
+        button.addEventListener("click", () => addToCart(product.id));
+
+        row.append(info, button);
+        $("products").appendChild(row);
+    });
+}
+
+function addToCart(id) {
+    if (busy) return;
+
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+
+    const item = cart.find(p => p.id === id);
+    const quantity = item ? item.qty : 0;
+
+    if (quantity >= product.stock) {
+        showMessage("Jumlah melebihi stok yang tersedia.", "error");
+        return;
+    }
+
+    if (item) {
+        item.qty++;
+    } else {
+        cart.push({ ...product, qty: 1 });
+    }
+
+    showMessage("");
+    renderCart();
+    renderProducts();
+}
+
+function changeQty(id, amount) {
+    if (busy) return;
+
+    const item = cart.find(p => p.id === id);
+    const product = products.find(p => p.id === id);
+    if (!item || !product) return;
+
+    const next = item.qty + amount;
+
+    if (next > product.stock) {
+        showMessage("Jumlah melebihi stok yang tersedia.", "error");
+        return;
+    }
+
+    if (next <= 0) {
+        removeItem(id);
+        return;
+    }
+
+    item.qty = next;
+    renderCart();
+    renderProducts();
+}
+
+function removeItem(id) {
+    if (busy) return;
+    cart = cart.filter(p => p.id !== id);
+    renderCart();
+    renderProducts();
+}
+
+function getTotal() {
+    return cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+}
+
+function renderCart() {
+    const area = $("cart");
+    area.replaceChildren();
+
+    if (!cart.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "Keranjang masih kosong.";
+        area.appendChild(empty);
+    } else {
+        cart.forEach(item => {
+            const row = document.createElement("div");
+            row.className = "cart-row";
+
+            const info = document.createElement("div");
+            info.className = "cart-info";
+
+            const name = document.createElement("strong");
+            name.textContent = item.name;
+
+            const subtotal = document.createElement("span");
+            subtotal.textContent = rupiah(item.price * item.qty);
+            info.append(name, subtotal);
+
+            const controls = document.createElement("div");
+            controls.className = "quantity";
+
+            const minus = document.createElement("button");
+            minus.textContent = "−";
+            minus.disabled = busy;
+            minus.addEventListener("click", () => changeQty(item.id, -1));
+
+            const qty = document.createElement("span");
+            qty.textContent = item.qty;
+
+            const plus = document.createElement("button");
+            plus.textContent = "+";
+            plus.disabled = busy;
+            plus.addEventListener("click", () => changeQty(item.id, 1));
+
+            const remove = document.createElement("button");
+            remove.className = "remove";
+            remove.textContent = "Hapus";
+            remove.disabled = busy;
+            remove.addEventListener("click", () => removeItem(item.id));
+
+            controls.append(minus, qty, plus, remove);
+            row.append(info, controls);
+            area.appendChild(row);
+        });
+    }
+
+    updateTotalAndChange();
+}
+
+function updateTotalAndChange() {
+    const total = getTotal();
+    const payment = parseRupiah($("payment").value);
+    $("total").textContent = rupiah(total);
+    $("change").textContent = rupiah(Math.max(0, payment - total));
+
+    $("paymentHint").textContent = payment < total
+        ? "Uang masih kurang " + rupiah(total - payment) + "."
+        : payment > 0
+            ? "Uang pembayaran mencukupi."
+            : "Masukkan uang pelanggan.";
+
+    $("payButton").disabled = busy;
+}
+
+function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[char]);
+}
+
+function renderReceipt(receipt) {
+    const rows = receipt.items.map(item => `
+        <tr>
+            <td colspan="2">${escapeHtml(item.name)}</td>
+        </tr>
+        <tr>
+            <td>${item.qty} x ${rupiah(item.price)}</td>
+            <td class="right">${rupiah(item.price * item.qty)}</td>
+        </tr>
+    `).join("");
+
+    const dateText = receipt.date.toLocaleString("id-ID", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit"
+    });
+
+    $("receipt").innerHTML = `
+        <h2>BAGUSMART</h2>
+        <div class="receipt-center">Struk Pembelian</div>
+        <div class="receipt-line"></div>
+        <div>No. Transaksi: ${escapeHtml(receipt.id ?? "-")}</div>
+        <div>Tanggal: ${escapeHtml(dateText)}</div>
+        <div class="receipt-line"></div>
+        <table>${rows}</table>
+        <div class="receipt-line"></div>
+        <table>
+            <tr class="receipt-total"><td>Total</td><td class="right">${rupiah(receipt.total)}</td></tr>
+            <tr><td>Bayar</td><td class="right">${rupiah(receipt.payment)}</td></tr>
+            <tr><td>Kembalian</td><td class="right">${rupiah(receipt.change)}</td></tr>
+        </table>
+        <div class="receipt-line"></div>
+        <div class="receipt-center">Terima kasih telah berbelanja!</div>
+        <div class="receipt-center">Simpan struk ini sebagai bukti pembayaran.</div>
+    `;
+}
+
+function printReceipt() {
+    if (!lastReceipt) {
+        showMessage("Belum ada struk yang bisa dicetak.", "error");
+        return;
+    }
+    renderReceipt(lastReceipt);
+    window.print();
+}
+
+async function pay() {
+    if (busy) return;
+
+    const total = getTotal();
+    const payment = parseRupiah($("payment").value);
+
+    if (!cart.length) {
+        showMessage("Keranjang masih kosong.", "error");
+        return;
+    }
+
+    if (!Number.isSafeInteger(payment) || payment < total) {
+        showMessage("Uang pembayaran masih kurang.", "error");
+        return;
+    }
+
+    // Backend menghitung ulang total dan memeriksa stok dari database.
+    // Format item disesuaikan dengan SaleService yang menerima productId dan quantity.
+    const purchasedItems = cart.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        qty: item.qty
+    }));
+
+    const payload = {
+        payment: payment,
+        items: cart.map(item => ({
+            productId: item.id,
+            quantity: item.qty
+        }))
+    };
+
+    busy = true;
+    $("payButton").textContent = "Memproses...";
+    showMessage("");
+    renderProducts();
+    renderCart();
+
+    try {
+        const saleResult = await apiRequest(SALES_API, {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+
+        const change = payment - total;
+        lastReceipt = {
+            id: saleResult && typeof saleResult === "object"
+                ? (saleResult.id ?? saleResult.saleId ?? null)
+                : null,
+            date: new Date(),
+            items: purchasedItems,
+            total: total,
+            payment: payment,
+            change: change
+        };
+        renderReceipt(lastReceipt);
+        $("receiptActions").hidden = false;
+
+        cart = [];
+        $("payment").value = "";
+        showMessage(
+            "Pembayaran berhasil! Total " + rupiah(total) +
+            ", uang diterima " + rupiah(payment) +
+            ", kembalian " + rupiah(change) + ".",
+            "success"
+        );
+
+        await loadProducts();
+        renderCart();
+    } catch (error) {
+        showMessage(
+            "Pembayaran gagal: " + error.message +
+            ". Keranjang tetap disimpan. Periksa format data yang diterima API /api/sales.",
+            "error"
+        );
+    } finally {
+        busy = false;
+        $("payButton").textContent = "Proses Pembayaran";
+        renderProducts();
+        renderCart();
+    }
+}
+
+$("search").addEventListener("input", renderProducts);
+$("payment").addEventListener("input", updateTotalAndChange);
+$("payButton").addEventListener("click", pay);
+$("printReceiptButton").addEventListener("click", printReceipt);
+
+loadProducts();
+renderCart();
+</script>
+</body>
+</html>

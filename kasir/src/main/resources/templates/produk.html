@@ -1,0 +1,410 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kelola Produk - Kasir Warung</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            color: #202938;
+        }
+        header {
+            background: #176b45;
+            color: white;
+            padding: 20px;
+        }
+        header h1 { margin: 0 0 14px; font-size: 25px; }
+        nav { display: flex; gap: 10px; flex-wrap: wrap; }
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 9px 14px;
+            border-radius: 7px;
+            background: rgba(255,255,255,.13);
+        }
+        nav a.active { background: white; color: #176b45; }
+        main { max-width: 1050px; margin: 24px auto; padding: 0 16px; }
+        .panel {
+            background: white;
+            padding: 22px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0000000a;
+        }
+        h2 { margin-top: 0; font-size: 20px; }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 14px;
+        }
+        label { display: block; font-size: 14px; font-weight: bold; }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin-top: 7px;
+            border: 1px solid #ccd3da;
+            border-radius: 7px;
+            font-size: 16px;
+        }
+        button {
+            border: 0;
+            border-radius: 7px;
+            padding: 11px 15px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .primary { background: #176b45; color: white; }
+        .secondary { background: #e5e9ed; color: #263238; }
+        .danger { background: #b42318; color: white; }
+        .actions { display: flex; gap: 7px; flex-wrap: wrap; }
+        .form-actions { display: flex; gap: 8px; margin-top: 18px; }
+        .message { margin-top: 14px; font-size: 14px; overflow-wrap: anywhere; }
+        .success { color: #176b45; }
+        .error { color: #b42318; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #e5e9ed;
+            text-align: left;
+        }
+        th { background: #f8faf9; white-space: nowrap; }
+        .empty { padding: 22px; text-align: center; color: #667085; }
+        .hint { color: #667085; font-size: 13px; line-height: 1.5; }
+        @media (max-width: 650px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .panel { padding: 16px; }
+            header h1 { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Kelola Produk</h1>
+    <nav>
+        <a href="/">Kasir</a>
+        <a href="/produk" class="active">Kelola Produk</a>
+    </nav>
+</header>
+
+<main>
+    <section class="panel">
+        <h2 id="formTitle">Tambah Produk Baru</h2>
+        <form id="productForm">
+            <input type="hidden" id="productId">
+
+            <div class="form-grid">
+                <label>
+                    Nama Produk
+                    <input id="productName" type="text"
+                           placeholder="Contoh: Indomie Goreng"
+                           maxlength="150" required>
+                </label>
+
+                <label>
+                    Harga (rupiah)
+                    <input id="productPrice" type="number"
+                           min="1" step="1"
+                           placeholder="3500" required>
+                </label>
+
+                <label>
+                    Stok
+                    <input id="productStock" type="number"
+                           min="0" step="1"
+                           placeholder="20" required>
+                </label>
+            </div>
+
+            <div class="form-actions">
+                <button class="primary" type="submit" id="saveButton">
+                    Simpan Produk
+                </button>
+                <button class="secondary" type="button"
+                        id="cancelButton" hidden>
+                    Batal Edit
+                </button>
+            </div>
+        </form>
+
+        <div id="formMessage" class="message" role="status"></div>
+    </section>
+
+    <section class="panel">
+        <h2>Daftar Produk</h2>
+        <p class="hint">
+            Produk yang disimpan di sini akan dimuat dari database melalui aplikasi kasir.
+        </p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>Nama Produk</th>
+                        <th>Harga</th>
+                        <th>Stok</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="productList">
+                    <tr><td colspan="5" class="empty">Memuat produk...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="listMessage" class="message" role="status"></div>
+    </section>
+</main>
+
+<script>
+    const API_URL = "/api/products";
+
+    const form = document.getElementById("productForm");
+    const idInput = document.getElementById("productId");
+    const nameInput = document.getElementById("productName");
+    const priceInput = document.getElementById("productPrice");
+    const stockInput = document.getElementById("productStock");
+    const saveButton = document.getElementById("saveButton");
+    const cancelButton = document.getElementById("cancelButton");
+    const formTitle = document.getElementById("formTitle");
+    const formMessage = document.getElementById("formMessage");
+    const listMessage = document.getElementById("listMessage");
+    const productList = document.getElementById("productList");
+
+    let products = [];
+
+    function rupiah(value) {
+        return new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+            maximumFractionDigits: 0
+        }).format(Number(value) || 0);
+    }
+
+    function showFormMessage(message, isError = false) {
+        formMessage.textContent = message;
+        formMessage.className = "message " + (isError ? "error" : "success");
+    }
+
+    function showListMessage(message, isError = false) {
+        listMessage.textContent = message;
+        listMessage.className = "message " + (isError ? "error" : "success");
+    }
+
+    async function requestApi(url, options = {}) {
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                "Content-Type": "application/json",
+                ...(options.headers || {})
+            }
+        });
+
+        const text = await response.text();
+        let data = null;
+
+        if (text) {
+            try {
+                data = JSON.parse(text);
+            } catch {
+                data = text;
+            }
+        }
+
+        if (!response.ok) {
+            const message =
+                data && typeof data === "object"
+                    ? (data.message || data.error || data.detail)
+                    : data;
+
+            throw new Error(
+                message || "Permintaan gagal dengan status " + response.status
+            );
+        }
+
+        return data;
+    }
+
+    function renderProducts() {
+        productList.replaceChildren();
+
+        if (!products.length) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 5;
+            cell.className = "empty";
+            cell.textContent = "Belum ada produk. Silakan tambah produk di atas.";
+            row.appendChild(cell);
+            productList.appendChild(row);
+            return;
+        }
+
+        products.forEach((product, index) => {
+            const row = document.createElement("tr");
+
+            const numberCell = document.createElement("td");
+            numberCell.textContent = index + 1;
+
+            const nameCell = document.createElement("td");
+            nameCell.textContent = product.name ?? "-";
+
+            const priceCell = document.createElement("td");
+            priceCell.textContent = rupiah(product.price);
+
+            const stockCell = document.createElement("td");
+            stockCell.textContent = product.stock ?? 0;
+
+            const actionsCell = document.createElement("td");
+            const actions = document.createElement("div");
+            actions.className = "actions";
+
+            const editButton = document.createElement("button");
+            editButton.type = "button";
+            editButton.className = "secondary";
+            editButton.textContent = "Edit";
+            editButton.addEventListener("click", () => editProduct(product));
+
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "danger";
+            deleteButton.textContent = "Hapus";
+            deleteButton.addEventListener("click", () => deleteProduct(product));
+
+            actions.append(editButton, deleteButton);
+            actionsCell.appendChild(actions);
+            row.append(numberCell, nameCell, priceCell, stockCell, actionsCell);
+            productList.appendChild(row);
+        });
+    }
+
+    async function loadProducts() {
+        productList.innerHTML =
+            '<tr><td colspan="5" class="empty">Memuat produk...</td></tr>';
+        showListMessage("");
+
+        try {
+            const data = await requestApi(API_URL);
+            if (!Array.isArray(data)) {
+                throw new Error("Data produk dari server bukan daftar yang valid.");
+            }
+
+            products = data;
+            renderProducts();
+        } catch (error) {
+            products = [];
+            renderProducts();
+            showListMessage(
+                "Gagal memuat produk: " + error.message +
+                ". Pastikan API /api/products tersedia dan database MySQL berjalan.",
+                true
+            );
+        }
+    }
+
+    function resetForm() {
+        form.reset();
+        idInput.value = "";
+        formTitle.textContent = "Tambah Produk Baru";
+        saveButton.textContent = "Simpan Produk";
+        cancelButton.hidden = true;
+    }
+
+    function editProduct(product) {
+        idInput.value = product.id;
+        nameInput.value = product.name ?? "";
+        priceInput.value = product.price ?? "";
+        stockInput.value = product.stock ?? 0;
+
+        formTitle.textContent = "Edit Produk";
+        saveButton.textContent = "Simpan Perubahan";
+        cancelButton.hidden = false;
+        showFormMessage("Silakan ubah data produk.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    form.addEventListener("submit", async function(event) {
+        event.preventDefault();
+        showFormMessage("");
+
+        const name = nameInput.value.trim();
+        const price = Number(priceInput.value);
+        const stock = Number(stockInput.value);
+
+        if (!name) {
+            showFormMessage("Nama produk wajib diisi.", true);
+            return;
+        }
+
+        if (!Number.isSafeInteger(price) || price <= 0) {
+            showFormMessage("Harga harus berupa angka rupiah bulat lebih dari 0.", true);
+            return;
+        }
+
+        if (!Number.isSafeInteger(stock) || stock < 0) {
+            showFormMessage("Stok harus berupa bilangan bulat 0 atau lebih.", true);
+            return;
+        }
+
+        const product = { name, price, stock };
+        const id = idInput.value;
+        const url = id ? API_URL + "/" + encodeURIComponent(id) : API_URL;
+        const method = id ? "PUT" : "POST";
+
+        saveButton.disabled = true;
+
+        try {
+            await requestApi(url, {
+                method,
+                body: JSON.stringify(product)
+            });
+
+            resetForm();
+            showFormMessage(id ? "Perubahan produk berhasil disimpan." : "Produk berhasil ditambahkan.");
+            await loadProducts();
+        } catch (error) {
+            showFormMessage("Gagal menyimpan produk: " + error.message, true);
+        } finally {
+            saveButton.disabled = false;
+        }
+    });
+
+    cancelButton.addEventListener("click", function() {
+        resetForm();
+        showFormMessage("");
+    });
+
+    async function deleteProduct(product) {
+        const confirmed = window.confirm(
+            'Hapus produk "' + product.name + '"?'
+        );
+
+        if (!confirmed) return;
+
+        showListMessage("");
+
+        try {
+            await requestApi(API_URL + "/" + encodeURIComponent(product.id), {
+                method: "DELETE"
+            });
+
+            showListMessage("Produk berhasil dihapus.");
+            await loadProducts();
+        } catch (error) {
+            showListMessage(
+                "Gagal menghapus produk: " + error.message +
+                ". Produk yang sudah dipakai dalam transaksi mungkin tidak boleh dihapus.",
+                true
+            );
+        }
+    }
+
+    loadProducts();
+</script>
+</body>
+</html>
